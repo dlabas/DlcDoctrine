@@ -46,7 +46,7 @@ class Module extends AbstractModule
                 'dlcdoctrine_resolvetargetentitylistener' => function ($sm) {
                     $options = $sm->get('dlcdoctrine_module_options');
                     //Create instance of ResolveTargetEntityListener
-                    $resolveTargetEntityListener = new \Doctrine\ORM\Tools\ResolveTargetEntityListener();
+                    $resolveTargetEntityListener = new \DlcDoctrine\Event\ResolveTargetEntityListener();
                     //Add all resolve target entities
                     foreach ($options->getResolveTargetEntities() as $originalEntity => $newConfig) {
                         $resolveTargetEntityListener->addResolveTargetEntity($originalEntity, $newConfig['newEntity'], $newConfig['mapping']);
