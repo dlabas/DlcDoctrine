@@ -113,6 +113,56 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
     }
     
     /**
+     * Returns a list of fields for the query condition
+     * 
+     * @return array
+     */
+    public function getQueryableProperties()
+    {
+        $classMetadata = $this->getObjectManager()
+                              ->getClassMetadata($this->getEntityClass());
+        
+        $fields = $classMetadata->getFieldNames();
+        $alias  = $this->getEntityClassAlias();
+        
+        foreach ($fields as $key => &$field) {
+            $fieldType = $classMetadata->getTypeOfField($field);
+            if (!in_array($fieldType, array('string', 'text'))) {
+                unset($fields[$key]);
+            } else {
+                $field = $alias . '.' . $field;
+            }
+        }
+        
+        return $fields;
+    }
+    
+    /**
+     * Returns all entities
+     * 
+     * @return null|array
+     */
+    public function findAll()
+    {
+        return $this->getObjectManager()
+                    ->getRepository($this->getEntityClass())
+                    ->findAll();
+    }
+    
+    /**
+     * Returns the entity for the primary key $id
+     * 
+     * @param \DlcDoctrine\Entity\AbstractEntity $id
+     * @return object
+     */
+    public function find($id)
+    {
+        return $this->getObjectManager()
+                    ->getRepository($this->getEntityClass())
+                    ->find($id);
+    }
+    
+    /**
      * Returns a pagination object with entities
      * 
      * @param int $page
@@ -131,8 +181,19 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
         $queryBuilder->select($entityClassAlias)
                      ->from($this->getEntityClass(), $entityClassAlias);
     
-        if(null !== $query) {
-            //@TODO add query conditions
+        if (null !== $query) {
+            $properties    = $this->getQueryableProperties();
+            $orExpressions = array();
+            
+            foreach ($properties as $property) {
+                $orExpressions[] = $queryBuilder->expr()->like($property, '?1');
+            }
+            
+            $queryBuilder->where(
+                call_user_func_array(array($queryBuilder->expr(), "orX"), $orExpressions)
+            );
+            
+            $queryBuilder->setParameter(1, $query);
         }
     
         if($orderBy) {
@@ -151,5 +212,33 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
                   ->setItemCountPerPage($limit);
     
         return $paginator;
+    }
+    
+    /**
+     * Saves an entity
+     * 
+     * @param \DlcDoctrine\Entity\AbstractEntity $entity
+     */
+    public function save($entity)
+    {
+        
+        $objectManager = $this->getObjectManager();
+        
+        //@TODO UnitOfWork::STATE_NEW == $em->getUnitOfWork()->getEntityState($entity) 
+        //@see http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/working-with-objects.html#entity-state
+        $objectManager->persist($entity);
+        $objectManager->flush();
+    }
+    
+    /**
+     * Deletes an entity
+     * 
+     * @param \DlcDoctrine\Entity\AbstractEntity $entity
+     */
+    public function remove($entity)
+    {
+        $objectManager = $this->getObjectManager();
+        $objectManager->remove($entity);
+        $objectManager->flush();
     }
 }

@@ -36,6 +36,7 @@ class Module extends AbstractModule
         return array(
             'invokables' => array(
                 'dlcdoctrine_event_finishlistener' => 'DlcDoctrine\Event\FinishListener',
+                'dlcdoctrine_setup_service' => 'DlcDoctrine\Service\Setup',
             ),
             'factories' => array(
                 'dlcdoctrine_module_options' => function ($sm) {
