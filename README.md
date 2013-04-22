@@ -24,7 +24,18 @@ Installation
 
 #### With composer
 
-Coming soon...
+1. Add this project and [DlcDoctrine](https://github.com/dlabas/DlcDoctrine) in your composer.json:
+
+    ```json
+    "require": {
+        "dl-commons/dlc-doctrine": "dev-master"
+    }
+    ```
+
+2. Now tell composer to download DlcDoctrine by running the command:
+
+    ```bash
+    $ php composer.phar update
 
 #### Post installation
 
