@@ -3,6 +3,8 @@ namespace DlcDoctrine\Mapper;
 
 use DlcBase\Mapper\AbstractMapper as AbstractBaseMapper;
 use Doctrine\Common\Persistence\ObjectManager;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\QueryBuilder;
 use Doctrine\ORM\Tools\Pagination\Paginator as ORMPaginator;
 use DoctrineModule\Persistence\ObjectManagerAwareInterface;
 use DoctrineORMModule\Paginator\Adapter\DoctrinePaginator;
@@ -11,29 +13,31 @@ use Zend\ServiceManager\ServiceLocatorAwareInterface;
 use Zend\ServiceManager\ServiceLocatorInterface;
 
 /**
- * Abstract mapper class for doctrine entities 
+ * Abstract mapper class for doctrine entities
  */
 class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInterface
 {
+    const JOIN_ALIAS_PREFIX = 'joined_';
+
     /**
      * Class name of entity class
-     * 
+     *
      * @var string
      */
     protected $entityClass;
-    
+
     /**
      * Alias for entity class name
-     * 
+     *
      * @var string
      */
     protected $entityClassAlias;
-    
+
     /**
      * @var ObjectManager
      */
     protected $objectManager;
-    
+
     /**
      * Getter for $entityClass
      *
@@ -48,7 +52,7 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
         }
         return $this->entityClass;
     }
-    
+
     /**
      * Setter for $entityClass
      *
@@ -60,7 +64,7 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
         $this->entityClass = $entityClass;
         return $this;
     }
-    
+
     /**
      * Getter for $entityClassAlias
      *
@@ -74,7 +78,7 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
         }
         return $this->entityClassAlias;
     }
-    
+
     /**
      * Setter for $entityClassAlias
      *
@@ -86,11 +90,12 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
         $this->entityClassAlias = $entityClassAlias;
         return $this;
     }
-    
+
     /**
      * Get the object manager
      *
-     * @return ObjectManager
+     * return ObjectManager
+     * @return EntityManager
      */
     public function getObjectManager()
     {
@@ -99,7 +104,7 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
         }
         return $this->objectManager;
     }
-    
+
     /**
      * Set the object manager
      *
@@ -111,20 +116,20 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
         $this->objectManager = $objectManager;
         return $this;
     }
-    
+
     /**
      * Returns a list of fields for the query condition
-     * 
+     *
      * @return array
      */
     public function getQueryableProperties()
     {
         $classMetadata = $this->getObjectManager()
                               ->getClassMetadata($this->getEntityClass());
-        
+
         $fields = $classMetadata->getFieldNames();
         $alias  = $this->getEntityClassAlias();
-        
+
         foreach ($fields as $key => &$field) {
             $fieldType = $classMetadata->getTypeOfField($field);
             if (!in_array($fieldType, array('string', 'text'))) {
@@ -133,13 +138,95 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
                 $field = $alias . '.' . $field;
             }
         }
-        
+
         return $fields;
     }
-    
+
+    /**
+     * Returns the column identifier for the order by property
+     *
+     * @param sting $orderBy
+     * @throws \InvalidArgumentException
+     * @return string
+     */
+    public function getOrderByIdentifier($orderBy)
+    {
+        $objectManager = $this->getObjectManager();
+        $classMetadata = $objectManager->getClassMetadata($this->getEntityClass());
+
+        if (strpos($orderBy, '::') === false) {
+
+            if (!$classMetadata->hasField($orderBy)) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Invalid order by column: Entity "%s" has no field "%s"',
+                    $this->getEntityClass(),
+                    $orderBy
+                ));
+            }
+
+            $orderByIdentifier = $this->getEntityClassAlias()
+                               . '.'
+                               . $orderBy;
+        } else {
+            list($association, $assocProperty) = explode('::', $orderBy);
+
+            if (!$classMetadata->hasAssociation($association)) {
+                throw new \InvalidArgumentException(sprintf(
+                    'Invalid order by column: Entity "%s" has no association "%s"',
+                    $this->getEntityClass(),
+                    $association
+                ));
+            }
+
+            if (in_array($assocProperty, array('count'))) {
+                //@FIXME
+                $orderByIdentifier = $this->getEntityClassAlias()
+                                   . '.id';
+
+            } else {
+                $assocTargetClass = $classMetadata->getAssociationTargetClass($association);
+
+                if (!$objectManager->getClassMetadata($assocTargetClass)->hasField($assocProperty)) {
+                    throw new \InvalidArgumentException(sprintf(
+                        'Invalid order by column: Entity "%s" has no field "%s"',
+                        $assocTargetClass,
+                        $assocProperty
+                    ));
+                }
+
+                $joinAlias         = self::JOIN_ALIAS_PREFIX . $association;
+                $orderByIdentifier = $joinAlias . '.' . $assocProperty;
+            }
+        }
+
+        return $orderByIdentifier;
+    }
+
+    /**
+     * Adds joins for all association mappings to the query builder
+     *
+     * @param QueryBuilder $queryBuilder
+     */
+    protected function addJoinTablesToQueryBuilder(QueryBuilder $queryBuilder)
+    {
+        $objectManager = $this->getObjectManager();
+        $entityAlias   = $this->getEntityClassAlias();
+        $classMetaData = $objectManager->getClassMetadata($this->getEntityClass());
+
+        $assocMappings = $classMetaData->getAssociationMappings();
+
+        foreach ($assocMappings as $fieldName => $assocMapping) {
+            $join  = $entityAlias . '.' . $fieldName;
+            $alias = self::JOIN_ALIAS_PREFIX . $fieldName;
+
+            $queryBuilder->addSelect($alias);
+            $queryBuilder->leftJoin($join, $alias);
+        }
+    }
+
     /**
      * Returns all entities
-     * 
+     *
      * @return null|array
      */
     public function findAll()
@@ -148,10 +235,10 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
                     ->getRepository($this->getEntityClass())
                     ->findAll();
     }
-    
+
     /**
      * Returns the entity for the primary key $id
-     * 
+     *
      * @param \DlcDoctrine\Entity\AbstractEntity $id
      * @return object
      */
@@ -161,10 +248,10 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
                     ->getRepository($this->getEntityClass())
                     ->find($id);
     }
-    
+
     /**
      * Returns a pagination object with entities
-     * 
+     *
      * @param int $page
      * @param int $limit
      * @param null|string $query
@@ -175,64 +262,69 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
     public function pagination($page, $limit, $query = null, $orderBy = null, $sort = 'ASC')
     {
         $entityClassAlias = $this->getEntityClassAlias();
-        
+
         // Create a Doctrine Collection
         $queryBuilder = $this->getObjectManager()->createQueryBuilder();
         $queryBuilder->select($entityClassAlias)
                      ->from($this->getEntityClass(), $entityClassAlias);
-    
+
+        //Add joins to query builder
+        $this->addJoinTablesToQueryBuilder($queryBuilder);
+
         if (null !== $query) {
             $properties    = $this->getQueryableProperties();
             $orExpressions = array();
-            
+
             foreach ($properties as $property) {
                 $orExpressions[] = $queryBuilder->expr()->like($property, '?1');
             }
-            
+
             $queryBuilder->where(
                 call_user_func_array(array($queryBuilder->expr(), "orX"), $orExpressions)
             );
-            
+
             $queryBuilder->setParameter(1, $query);
         }
-    
-        if($orderBy) {
+
+        if ($orderBy) {
+            $orderByIdentifier = $this->getOrderByIdentifier($orderBy);
+
             if (!$sort) {
                 $sort = 'ASC';
             }
-            $queryBuilder->orderBy($entityClassAlias . '.' . $orderBy, $sort);
+            $queryBuilder->orderBy($orderByIdentifier, $sort);
         }
-    
+
         // Create the paginator itself
         $paginator = new Paginator(
             new DoctrinePaginator(new ORMPaginator($queryBuilder))
         );
-    
+
         $paginator->setCurrentPageNumber($page)
                   ->setItemCountPerPage($limit);
-    
+
         return $paginator;
     }
-    
+
     /**
      * Saves an entity
-     * 
+     *
      * @param \DlcDoctrine\Entity\AbstractEntity $entity
      */
     public function save($entity)
     {
-        
+
         $objectManager = $this->getObjectManager();
-        
-        //@TODO UnitOfWork::STATE_NEW == $em->getUnitOfWork()->getEntityState($entity) 
+
+        //@TODO UnitOfWork::STATE_NEW == $em->getUnitOfWork()->getEntityState($entity)
         //@see http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/working-with-objects.html#entity-state
         $objectManager->persist($entity);
         $objectManager->flush();
     }
-    
+
     /**
      * Deletes an entity
-     * 
+     *
      * @param \DlcDoctrine\Entity\AbstractEntity $entity
      */
     public function remove($entity)
