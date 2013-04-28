@@ -225,6 +225,41 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
     }
 
     /**
+     * Adds filter conditions to query bilder
+     *
+     * @param array $filter
+     * @param QueryBuilder $queryBuilder
+     * @throws \InvalidArgumentException
+     * @return integer
+     */
+    protected function addFilterToQueryBuilder(array $filter, QueryBuilder $queryBuilder)
+    {
+        $objectManager    = $this->getObjectManager();
+        $entityClassAlias = $this->getEntityClassAlias();
+        $classMetaData    = $objectManager->getClassMetadata($this->getEntityClass());
+        $assocMappings    = $classMetaData->getAssociationMappings();
+
+        $andExpressions = array();
+        $paramCounter   = 0;
+
+        foreach ($filter as $property => $value) {
+            if (empty($value)) {
+                continue;
+            }
+
+            if (!isset($assocMappings[$property])) {
+                throw new \InvalidArgumentException('Unkown association "' . $property . '"');
+            }
+            $paramCounter++;
+            $queryBuilder->andWhere($queryBuilder->expr()->eq($entityClassAlias . '.' .$property, '?' . $paramCounter));
+            $queryBuilder->setParameter($paramCounter, $value);
+
+        }
+
+        return $paramCounter;
+    }
+
+    /**
      * Returns all entities
      *
      * @return null|array
@@ -257,9 +292,10 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
      * @param null|string $query
      * @param null|string $orderBy
      * @param string $sort
+     * @param null|array $filter
      * @return \Zend\Paginator\Paginator
      */
-    public function pagination($page, $limit, $query = null, $orderBy = null, $sort = 'ASC')
+    public function pagination($page, $limit, $query = null, $orderBy = null, $sort = 'ASC', $filter = null)
     {
         $entityClassAlias = $this->getEntityClassAlias();
 
@@ -268,22 +304,29 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
         $queryBuilder->select($entityClassAlias)
                      ->from($this->getEntityClass(), $entityClassAlias);
 
+        $paramCounter = 0;
+
+        if (is_array($filter)) {
+            $paramCounter = $this->addFilterToQueryBuilder($filter, $queryBuilder);
+        }
+
         //Add joins to query builder
         $this->addJoinTablesToQueryBuilder($queryBuilder);
 
         if (null !== $query) {
             $properties    = $this->getQueryableProperties();
             $orExpressions = array();
+            $paramCounter++;
 
             foreach ($properties as $property) {
-                $orExpressions[] = $queryBuilder->expr()->like($property, '?1');
+                $orExpressions[] = $queryBuilder->expr()->like($property, '?' . $paramCounter);
             }
 
-            $queryBuilder->where(
+            $queryBuilder->andWhere(
                 call_user_func_array(array($queryBuilder->expr(), "orX"), $orExpressions)
             );
 
-            $queryBuilder->setParameter(1, $query);
+            $queryBuilder->setParameter($paramCounter, $query);
         }
 
         if ($orderBy) {
