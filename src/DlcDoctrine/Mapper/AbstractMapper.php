@@ -344,7 +344,8 @@ class AbstractMapper extends AbstractBaseMapper implements ObjectManagerAwareInt
         );
 
         $paginator->setCurrentPageNumber($page)
-                  ->setItemCountPerPage($limit);
+                  ->setItemCountPerPage($limit)
+                  ->setPageRange(5);
 
         return $paginator;
     }
