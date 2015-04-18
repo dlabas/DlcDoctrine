@@ -17,8 +17,8 @@ class RollbackTransactionListener extends AbstractListener
      */
     public function attach(EventManagerInterface $events)
     {
-        $this->listeners[] = $events->attach(MvcEvent::EVENT_DISPATCH_ERROR, array($this, 'onError'));
-        $this->listeners[] = $events->attach(MvcEvent::EVENT_RENDER_ERROR, array($this, 'onRenderErrre'));
+        $this->listeners[] = $events->attach(MvcEvent::EVENT_DISPATCH_ERROR, array($this, 'onDispatchError'));
+        $this->listeners[] = $events->attach(MvcEvent::EVENT_RENDER_ERROR, array($this, 'onRenderError'));
     }
     
     /**
@@ -26,7 +26,7 @@ class RollbackTransactionListener extends AbstractListener
      *
      * @param  MvcEvent $e
      */
-    public function onDispatchErrorh(MvcEvent $event)
+    public function onDispatchError(MvcEvent $event)
     {
         $this->rollbackTransaction();
     }
