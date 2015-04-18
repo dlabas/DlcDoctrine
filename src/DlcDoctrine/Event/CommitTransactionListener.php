@@ -30,7 +30,7 @@ class CommitTransactionListener extends AbstractListener
         $connection = $this->getObjectManager()->getConnection();
         
         if ($connection->isTransactionActive()) {
-            $connection->commitTransaction();
+            $connection->commit();
         }
     }
 }
